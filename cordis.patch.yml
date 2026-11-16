@@ -1,0 +1,10 @@
+# Layer this bundle adds to a dsh profile. Edit values here for every profile
+# that installs the bundle, or save them from the plugin's settings page, which
+# writes them into the profile's own cordis.patch.yml.
+- insert:
+    - id: dbgpt
+      name: dsh-plugin-dbgpt
+      config:
+        dbgptHome: /mnt/workspace/sxk_dbgpt/DB-GPT
+        llmSource: dsh
+        llmModel: gpt-5.5
