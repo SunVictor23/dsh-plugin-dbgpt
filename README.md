@@ -103,6 +103,7 @@ DeepSeek 官方 API 不提供 Embedding。DB-GPT 现有的向量数据是用京�
 | `src/render.js` | 把结果转成给模型看的 Markdown |
 | `src/client.js` | 网页端：插件页面里的设置表单 |
 | `cordis.patch.yml` | 安装后加入 profile 的配置层 |
+| `install.sh` | 新电脑一键安装 |
 
 运行单元测试：
 
