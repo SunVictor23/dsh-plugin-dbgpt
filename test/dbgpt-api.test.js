@@ -52,6 +52,12 @@ test('renderQuery escapes pipes and newlines in cells', () => {
   assert.match(text, /\| x\\\|y z \|/)
 })
 
+test('renderQuery suggests no chart for either name of a plain table', () => {
+  for (const chartType of ['response_table', 'Table']) {
+    assert.doesNotMatch(renderQuery({ database: 'd', summary: '', chartType, rowCount: 1, columns: ['a'], rows: [{ a: 1 }] }), /suggests/)
+  }
+})
+
 test('renderDatabases lists names, types, and descriptions', () => {
   assert.equal(
     renderDatabases({ databases: [{ name: 'Walmart_Sales', type: 'sqlite', description: 'Default example' }] }),

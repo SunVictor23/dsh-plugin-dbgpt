@@ -14,6 +14,37 @@
 
 ## 安装
 
+### 一键安装（新电脑推荐）
+
+把本目录拷到新电脑上，执行：
+
+```sh
+bash install.sh
+```
+
+脚本会依次：
+
+1. 检查 git、Node.js（≥ 24.9）、pnpm、uv，缺 pnpm 或 uv 时自动安装；
+2. DB-GPT 目录不存在就从 GitHub 克隆（固定到测试过的版本），然后 `uv sync` 安装依赖；如果带来了旧电脑的 `pilot/`，把指向旧路径的 SQLite 数据源改到新路径；
+3. deepseek-harness 目录不存在就克隆，然后 `pnpm install` 和 `pnpm run build`；
+4. 把本机的 DB-GPT 路径、端口、Embedding 地址写进本目录的 `cordis.patch.yml`；
+5. 把插件装进 dsh 的 `web` profile；
+6. 询问 DeepSeek API Key 和 Embedding API Key（直接回车跳过），存到 `~/.dsh/.env`（权限 600）。也可以事先用同名环境变量 `DEEPSEEK_API_KEY`、`DBGPT_EMBEDDING_API_KEY` 传入。
+
+默认 DB-GPT 和 deepseek-harness 放在本目录的上一级，即与 `dsh-plugin-dbgpt` 并列。目录不同时用参数指定：
+
+```sh
+bash install.sh --dbgpt-dir /data/DB-GPT --dsh-dir /data/deepseek-harness
+```
+
+其他参数：`--port` 改 DB-GPT 端口，`--embedding-url none` 让 Embedding 跟模型用同一个地址，`--skip-build` 跳过依赖安装和构建，`--no-keys` 不询问 Key，`--profile` 装到别的 dsh profile。脚本可以重复执行，已完成的步骤不会出问题。完整说明见 `bash install.sh --help`。
+
+装完后启动 dsh：`cd deepseek-harness && pnpm dsh web`。插件会自动启动 DB-GPT。
+
+旧电脑的 DB-GPT 数据源和历史对话都在 `DB-GPT/pilot/` 里，想保留就在运行脚本前把它拷到新电脑的 DB-GPT 目录。Key 保存在每台电脑自己的 dsh 里，不会随插件迁移；以后在 dsh 网页里保存的 Key 优先于 `~/.dsh/.env`。
+
+### 手动安装
+
 在 deepseek-harness 目录执行（dsh 从源码运行时用 `pnpm dsh`）：
 
 ```sh
@@ -22,7 +53,7 @@ pnpm dsh plugin --profile web add /mnt/workspace/sxk_dbgpt/dsh-plugin-dbgpt
 
 也可以在 dsh 网页的 **插件 → 添加插件** 里填这个目录的绝对路径。安装后重启 dsh web 生效。
 
-前提：DB-GPT 已经用 `uv sync` 装好依赖，`DB-GPT/.venv/bin/dbgpt` 存在。
+前提：DB-GPT 已经用 `uv sync` 装好依赖，`DB-GPT/.venv/bin/dbgpt` 存在；`cordis.patch.yml` 里的 `dbgptHome` 是本机的 DB-GPT 路径。
 
 ## 开关插件
 

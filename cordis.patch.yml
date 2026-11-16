@@ -1,9 +1,11 @@
 # Layer this bundle adds to a dsh profile. Edit values here for every profile
 # that installs the bundle, or save them from the plugin's settings page, which
-# writes them into the profile's own cordis.patch.yml.
+# writes them into the profile's own cordis.patch.yml. install.sh rewrites it.
 - insert:
     - id: dbgpt
       name: dsh-plugin-dbgpt
       config:
-        dbgptHome: /mnt/workspace/sxk_dbgpt/DB-GPT
+        dbgptHome: "/mnt/workspace/sxk_dbgpt/DB-GPT"
+        port: 5670
         llmSource: dsh
+        embeddingBaseURL: "https://modelservice.jdcloud.com/v1"

@@ -62,7 +62,8 @@ export function renderQuery(value) {
       parts.push(`Result: ${value.rowCount} row(s)${shown}.\n\n${table(value.columns, value.rows)}`)
     }
   }
-  if (value.chartType && value.chartType !== 'response_table' && value.rowCount) {
+  // DB-GPT names a plain table either `response_table` or `Table`.
+  if (value.chartType && !/table/i.test(value.chartType) && value.rowCount) {
     parts.push(`DB-GPT suggests showing this as a ${CHART_NAMES[value.chartType] ?? value.chartType}.`)
   }
   return parts.join('\n\n')
