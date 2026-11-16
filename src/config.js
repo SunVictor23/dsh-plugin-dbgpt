@@ -3,6 +3,8 @@ import z from '@deepseek-ai/schemastery'
 
 /** Credential reference the custom model source reads its API key from. */
 export const DEFAULT_KEY_REF = 'DBGPT_LLM_API_KEY'
+/** Credential reference of a separate embeddings key. */
+export const DEFAULT_EMBEDDING_KEY_REF = 'DBGPT_EMBEDDING_API_KEY'
 
 export const Config = z.object({
   dbgptHome: z.string().required().volatile()
@@ -35,8 +37,12 @@ export const Config = z.object({
     .description('Credential reference holding the custom source\'s API key.'),
   llmContextLength: z.number().step(1).min(1024).default(131_072).volatile()
     .description('Context window DB-GPT budgets prompts against.'),
+  llmProvider: z.union(['auto', 'proxy/openai', 'proxy/deepseek']).default('auto').volatile()
+    .description('DB-GPT model provider. auto picks proxy/deepseek (thinking off, so answers stay parseable) for api.deepseek.com and proxy/openai otherwise.'),
   embeddingModel: z.string().default('text-embedding-3-large').volatile()
     .description('Embedding model DB-GPT uses for schema retrieval and knowledge bases.'),
   embeddingBaseURL: z.string().volatile()
-    .description('OpenAI-compatible base URL for embeddings; empty uses the LLM base URL. The key is the LLM key.'),
+    .description('OpenAI-compatible base URL for embeddings; empty uses the LLM base URL.'),
+  embeddingApiKeyEnv: z.string().role('credential-ref').default(DEFAULT_EMBEDDING_KEY_REF).volatile()
+    .description('Credential reference holding the embeddings API key; while it is unset the LLM key is used.'),
 })

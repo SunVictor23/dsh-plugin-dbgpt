@@ -26,8 +26,10 @@ const baseValues = {
   llmBaseURL: '',
   llmApiKeyEnv: 'DBGPT_LLM_API_KEY',
   llmContextLength: 131072,
+  llmProvider: 'auto',
   embeddingModel: 'text-embedding-3-large',
   embeddingBaseURL: '',
+  embeddingApiKeyEnv: 'DBGPT_EMBEDDING_API_KEY',
 }
 
 /** A context whose services answer like a dsh web composition with one DeepSeek-route provider. */
@@ -36,18 +38,18 @@ function fakeContext({ baseURL = 'https://modelservice.jdcloud.com/anthropic', k
     agentDefaultModel: { currentSelection: () => ({ provider: 'deepseek-official', model: 'DeepSeek-V4-Pro-0813' }) },
     llm: {
       listConfigurableProviders: () => [{
+        // Like dsh's DeepSeek API-key route, the entry reports no default endpoint.
         provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [],
-        defaultBaseURL: 'https://api.deepseek.com/anthropic', baseURLEnv: ['DEEPSEEK_BASE_URL'],
       }],
     },
     settings: {
       describe: () => [{ ns: 'llm-deepseek', value: { baseURL, apiKeyEnv: 'DEEPSEEK_API_KEY' } }],
     },
+    credentials: keys === null
+      ? undefined
+      : { resolve: async ref => keys[ref] === undefined ? undefined : { value: keys[ref], source: 'file' } },
   }
-  return {
-    get: name => services[name],
-    credentials: { resolve: async ref => keys[ref] === undefined ? undefined : { value: keys[ref], source: 'file' } },
-  }
+  return { get: name => services[name] }
 }
 
 test('openAIBaseURL maps Anthropic endpoints to their OpenAI-compatible base', () => {
@@ -67,6 +69,13 @@ test('dsh source reuses the provider endpoint, key, and default model', async ()
   assert.deepEqual(llm, {
     source: 'dsh', model: 'DeepSeek-V4-Pro-0813', baseURL: 'https://modelservice.jdcloud.com/v1', apiKey: 'dsh-key', keyRef: 'DEEPSEEK_API_KEY',
   })
+})
+
+test('a provider without a configured or reported endpoint falls back to the given defaults', async () => {
+  const ctx = fakeContext({ baseURL: null })
+  await assert.rejects(resolveModel(ctx, volatileConfig(baseValues)), /没有配置地址/)
+  const defaults = { 'llm-deepseek': { env: ['DSH_PLUGIN_DBGPT_TEST_BASE'], baseURL: 'https://api.deepseek.com/anthropic' } }
+  assert.equal((await resolveModel(ctx, volatileConfig(baseValues), defaults)).baseURL, 'https://api.deepseek.com/v1')
 })
 
 test('dsh source honours model and URL overrides', async () => {
@@ -89,6 +98,13 @@ test('a missing key is a configuration error naming the credential', async () =>
   await assert.rejects(resolveModel(ctx, volatileConfig(baseValues)), /DEEPSEEK_API_KEY/)
 })
 
+test('without a credential store the key comes from the environment variable of the same name', async (t) => {
+  t.after(() => { delete process.env.DEEPSEEK_API_KEY })
+  process.env.DEEPSEEK_API_KEY = 'env-key'
+  const llm = await resolveModel(fakeContext({ keys: null }), volatileConfig(baseValues))
+  assert.equal(llm.apiKey, 'env-key')
+})
+
 test('resolveLaunch builds argv, embeddings URL, and a TOML without the key', async () => {
   const spec = await resolveLaunch(fakeContext(), volatileConfig(baseValues))
   assert.equal(spec.argv[0], '/srv/DB-GPT/.venv/bin/dbgpt')
@@ -101,6 +117,28 @@ test('resolveLaunch builds argv, embeddings URL, and a TOML without the key', as
   assert.match(toml, /name = "DeepSeek-V4-Pro-0813"/)
   assert.match(toml, /api_key = "\$\{env:DBGPT_LLM_API_KEY\}"/)
   assert.match(toml, /port = 5670/)
+})
+
+test('embeddings use their own key when it is stored and the model key otherwise', async () => {
+  const shared = await resolveLaunch(fakeContext(), volatileConfig(baseValues))
+  assert.equal(shared.embeddingApiKey, 'dsh-key')
+  const keys = { DEEPSEEK_API_KEY: 'dsh-key', DBGPT_EMBEDDING_API_KEY: 'embed-key' }
+  const separate = await resolveLaunch(fakeContext({ keys }), volatileConfig({ ...baseValues, embeddingBaseURL: 'https://e.test/v1' }))
+  assert.equal(separate.embeddingApiKey, 'embed-key')
+  assert.equal(separate.embeddingURL, 'https://e.test/v1/embeddings')
+  assert.ok(!sameLaunch(shared, separate))
+})
+
+test('DeepSeek\'s own API gets DB-GPT\'s DeepSeek provider with thinking off', async () => {
+  const deepseek = await resolveLaunch(fakeContext({ baseURL: 'https://api.deepseek.com/anthropic' }), volatileConfig(baseValues))
+  assert.equal(deepseek.baseURL, 'https://api.deepseek.com/v1')
+  assert.equal(deepseek.provider, 'proxy/deepseek')
+  assert.match(renderToml(deepseek), /provider = "proxy\/deepseek"\napi_base = "https:\/\/api\.deepseek\.com\/v1"[\s\S]*thinking_enabled = false/)
+  const other = await resolveLaunch(fakeContext(), volatileConfig(baseValues))
+  assert.equal(other.provider, 'proxy/openai')
+  assert.doesNotMatch(renderToml(other), /thinking_enabled/)
+  const forced = await resolveLaunch(fakeContext(), volatileConfig({ ...baseValues, llmProvider: 'proxy/deepseek' }))
+  assert.equal(forced.provider, 'proxy/deepseek')
 })
 
 test('resolveLaunch rejects a relative DB-GPT directory', async () => {

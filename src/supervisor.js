@@ -170,12 +170,12 @@ export class DbgptSupervisor {
 
   /**
    * Describe the server for the status command.
-   * @returns {{ state: string, spec?: object, error?: unknown }} current state; the spec excludes the API key.
+   * @returns {{ state: string, spec?: object, error?: unknown }} current state; the spec excludes the API keys.
    */
   status() {
     const current = this.current
     if (current === null) return { state: this.lastError === undefined ? 'stopped' : 'failed', error: this.lastError }
-    const { apiKey: _secret, ...spec } = current.spec
+    const { apiKey: _key, embeddingApiKey: _embeddingKey, ...spec } = current.spec
     if (current.failed) return { state: 'failed', spec, error: this.lastError }
     if (current.exited) return { state: 'exited', spec }
     return { state: current.readySettled ? 'running' : 'starting', spec }
@@ -205,7 +205,7 @@ export class DbgptSupervisor {
       cwd: spec.home,
       stdio: { stdin: 'ignore', stdout: { maxBytes: OUTPUT_TAIL_BYTES }, stderr: { maxBytes: OUTPUT_TAIL_BYTES } },
       graceMs: GRACE_MS,
-      env: { [LLM_KEY_ENV]: spec.apiKey, [EMBEDDING_KEY_ENV]: spec.apiKey, PYTHONUNBUFFERED: '1' },
+      env: { [LLM_KEY_ENV]: spec.apiKey, [EMBEDDING_KEY_ENV]: spec.embeddingApiKey, PYTHONUNBUFFERED: '1' },
     })
     const entry = { spec, handle, exited: false, failed: false, readySettled: false, ready: undefined }
     const exit = handle.done.then(

@@ -7,4 +7,3 @@
       config:
         dbgptHome: /mnt/workspace/sxk_dbgpt/DB-GPT
         llmSource: dsh
-        llmModel: gpt-5.5

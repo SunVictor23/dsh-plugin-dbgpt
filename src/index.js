@@ -6,6 +6,7 @@
  */
 import { randomUUID } from 'node:crypto'
 import { HarnessError } from '@deepseek-ai/dsh-error'
+import { PUBLIC_BASE_URL } from '@deepseek-ai/dsh-llm-deepseek'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { Config } from './config.js'
 import { askDatabase, listDatabases, parseChatData } from './dbgpt-api.js'
@@ -14,7 +15,7 @@ import { columnsOf, renderDatabases, renderQuery } from './render.js'
 import { DbgptSupervisor } from './supervisor.js'
 
 export const name = 'dbgpt'
-export const inject = ['tools', 'subprocess', 'credentials']
+export const inject = ['tools', 'subprocess']
 export { Config }
 
 /** @param {unknown} value @returns {string | undefined} a non-empty trimmed string. */
@@ -44,26 +45,59 @@ function toolError(error, callSignal, timeoutMs) {
 const STATE_WORDS = { running: '运行中', starting: '启动中', failed: '启动失败', exited: '已退出', stopped: '未启动' }
 
 /**
+ * Endpoint of dsh's DeepSeek API-key route when its settings name none; that
+ * route does not report a default endpoint in the provider directory.
+ */
+const ENDPOINT_DEFAULTS = { 'llm-deepseek': { env: ['DEEPSEEK_BASE_URL'], baseURL: PUBLIC_BASE_URL } }
+
+/**
  * Register the DB-GPT tools and keep the managed server in step with the configuration.
  * @param {import('@deepseek-ai/cordis').Context} ctx - plugin context.
  * @param {object} config - validated configuration (see {@link Config}).
  */
 export function apply(ctx, config) {
   const supervisor = new DbgptSupervisor(ctx, {
-    resolveLaunch: () => resolveLaunch(ctx, config),
+    resolveLaunch: () => resolveLaunch(ctx, config, ENDPOINT_DEFAULTS),
     startupTimeoutMs: config.startupTimeoutMs,
   })
   /** DB-GPT conversation per dsh Session and database, so follow-up questions keep their context. */
   const conversations = new Map()
+  /** Settles when the last request queued on a conversation settles. */
+  const conversationTails = new Map()
 
+  /**
+   * Run requests on one DB-GPT conversation one at a time: DB-GPT fails a
+   * request that writes the conversation's history while another one does.
+   * @template T
+   * @param {string} id - DB-GPT conversation id.
+   * @param {() => Promise<T>} task - the request.
+   * @returns {Promise<T>} the request's result.
+   */
+  function inConversation(id, task) {
+    const run = (conversationTails.get(id) ?? Promise.resolve()).then(task)
+    const tail = run.then(() => undefined, () => undefined)
+    conversationTails.set(id, tail)
+    void tail.then(() => { if (conversationTails.get(id) === tail) conversationTails.delete(id) })
+    return run
+  }
+
+  /** Start or restart the managed server when the configuration it depends on may have changed. */
   const reconcile = () => {
+    if (!config.manage) return
     supervisor.ensureReady().catch((error) => { ctx.logger.warn(`DB-GPT is not running: ${error.message}`) })
   }
   ctx.effect(() => {
-    if (config.manage) reconcile()
+    reconcile()
     return () => supervisor.dispose()
   }, 'dbgpt: managed server')
-  ctx.on('loader/volatile-update', () => { if (config.manage) reconcile() })
+  ctx.on('loader/volatile-update', reconcile)
+  // Resolving the model reads the model provider, its settings, the default
+  // model, and the credential store; these services can finish loading after
+  // this plugin, so retry once each group is present and whenever the provider
+  // directory changes. A retry against an unchanged configuration does nothing.
+  ctx.inject(['llm', 'settings', 'agentDefaultModel'], (child) => { child.effect(() => { reconcile(); return () => {} }) })
+  ctx.inject(['credentials'], (child) => { child.effect(() => { reconcile(); return () => {} }) })
+  ctx.on('llm/adapters-updated', reconcile)
 
   /**
    * Where requests go: the managed server once ready, or the configured endpoint.
@@ -136,9 +170,10 @@ export function apply(ctx, config) {
         }
         const key = `${exec.agent?.session?.id ?? randomUUID()}\0${args.database}`
         if (!conversations.has(key)) conversations.set(key, randomUUID())
-        const answer = parseChatData(await askDatabase(endpoint, {
-          model, database: args.database, question: args.question, conversation: conversations.get(key),
-        }, signal))
+        const conversation = conversations.get(key)
+        const answer = parseChatData(await inConversation(conversation, () => askDatabase(endpoint, {
+          model, database: args.database, question: args.question, conversation,
+        }, signal)))
         const value = { database: args.database, summary: answer.summary }
         if (answer.sql !== undefined) value.sql = answer.sql
         if (answer.chartType !== undefined) value.chartType = answer.chartType
