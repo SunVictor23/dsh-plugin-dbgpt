@@ -1,15 +1,18 @@
 /**
- * Browser half of dsh-plugin-dbgpt: the `dbgpt` row's settings page on the
- * Plugins page. It edits the row's volatile fields through the shared
- * settings form and stores the custom API key in dsh's credential store, so
- * no key is written to a configuration file. Saving applies at once; the Host
- * half restarts DB-GPT when the model settings change.
+ * Browser half of dsh-plugin-dbgpt. It adds the `dbgpt` row's settings page on
+ * the Plugins page, which edits the row's volatile fields through the shared
+ * settings form and stores API keys in dsh's credential store, so no key is
+ * written to a configuration file; saving applies at once and the Host half
+ * restarts DB-GPT when the model settings change. It also draws `dbgpt_agent`
+ * calls in the conversation: "analyzing" while DB-GPT works, then DB-GPT's
+ * conclusion with its steps folded beneath a disclosure row.
  */
 window.__ModuleLoader__.load({
   id: 'dsh-plugin-dbgpt',
   factory(require) {
     const React = require('react')
     const {
+      DisclosureRow, IconDatabaseOutlineRegular, MarkdownText,
       SegmentedControl, SettingsForm, SettingsFormModel, SettingsSecretField, SettingsValueField,
       settingsNumberField, settingsTextField,
     } = require('@deepseek-ai/dsh-client-ui-primitives')
@@ -23,6 +26,12 @@ window.__ModuleLoader__.load({
 
     const zh = {
       summary: '让 dsh 在需要查询数据时调用 DB-GPT',
+      section_mode: '分析方式',
+      mode_label: '分析方式',
+      mode_agent: 'ReAct 智能体',
+      mode_sql: '单轮 SQL',
+      mode_agentHint: 'DB-GPT 自己规划、多次查询、出错重试，并写出结论；dsh 只转交问题，直接显示 DB-GPT 的结论。',
+      mode_sqlHint: 'DB-GPT 每次只写一条 SQL 并执行，dsh 根据查询结果继续思考和追问。',
       section_model: '模型',
       section_embedding: 'Embedding',
       section_server: 'DB-GPT 服务',
@@ -61,9 +70,25 @@ window.__ModuleLoader__.load({
       save: '保存',
       saving: '保存中…',
       saveFailed: '没有保存成功，修改已保留，请检查后重试。',
+      agent_running: 'DB-GPT 正在分析中…',
+      agent_runningIn: 'DB-GPT 正在分析中…（{database}）',
+      agent_steps: 'DB-GPT 分析过程（{count} 步）',
+      agent_done: 'DB-GPT 已给出结论',
+      agent_failed: 'DB-GPT 分析失败',
+      agent_plan: '计划',
+      step_failed: '失败',
+      copy: '复制',
+      copied: '已复制',
+      footnotes: '脚注',
     }
     const en = {
       summary: 'Lets dsh call DB-GPT for data questions',
+      section_mode: 'Analysis',
+      mode_label: 'Analysis mode',
+      mode_agent: 'ReAct agent',
+      mode_sql: 'Single SQL',
+      mode_agentHint: 'DB-GPT plans, runs as many queries as it needs, retries failures, and writes the conclusion; dsh only passes the question on and shows DB-GPT\'s conclusion.',
+      mode_sqlHint: 'DB-GPT writes and runs one SQL query per call, and dsh reasons over the rows and asks follow-ups.',
       section_model: 'Model',
       section_embedding: 'Embeddings',
       section_server: 'DB-GPT server',
@@ -102,6 +127,16 @@ window.__ModuleLoader__.load({
       save: 'Save',
       saving: 'Saving…',
       saveFailed: 'The settings were not saved; your edits are kept for you to check and retry.',
+      agent_running: 'DB-GPT is analyzing…',
+      agent_runningIn: 'DB-GPT is analyzing… ({database})',
+      agent_steps: 'DB-GPT\'s analysis ({count} steps)',
+      agent_done: 'DB-GPT has concluded',
+      agent_failed: 'DB-GPT\'s analysis failed',
+      agent_plan: 'Plan',
+      step_failed: 'failed',
+      copy: 'Copy',
+      copied: 'Copied',
+      footnotes: 'Footnotes',
     }
 
     /** Minimal observable snapshot the slot renderer binds as `useDbgptForm`. */
@@ -136,7 +171,7 @@ window.__ModuleLoader__.load({
         return Number.isInteger(port) && port >= 1 && port <= 65535 ? { kind: 'set', value: port } : undefined
       },
     }
-    const VALUE_FIELDS = ['llmSource', 'llmModel', 'llmBaseURL', 'embeddingModel', 'embeddingBaseURL', 'dbgptHome', 'port']
+    const VALUE_FIELDS = ['mode', 'llmSource', 'llmModel', 'llmBaseURL', 'embeddingModel', 'embeddingBaseURL', 'dbgptHome', 'port']
     /** Write-only key controls: the form field, the config field naming its credential, and that field's default. */
     const SECRETS = [
       { field: 'apiKey', refField: 'llmApiKeyEnv', defaultRef: 'DBGPT_LLM_API_KEY' },
@@ -152,6 +187,7 @@ window.__ModuleLoader__.load({
         this.credentials = {}
         for (const secret of SECRETS) this.credentials[secret.field] = { ref: this.ref(secret), configured: false, writable: true }
         this.form = new SettingsFormModel(this.scope, [
+          settingsTextField('mode'),
           settingsTextField('llmSource'),
           settingsTextField('llmModel'),
           checkedTextField('llmBaseURL', isUrl),
@@ -221,12 +257,13 @@ window.__ModuleLoader__.load({
     const headingStyle = { margin: '8px 0 0', fontSize: 13, fontWeight: 600 }
     const hintStyle = { margin: 0, fontSize: 12, opacity: 0.7 }
 
-    /** The row page: model source, model fields, and the DB-GPT server fields. */
+    /** The row page: analysis mode, model source, model fields, and the DB-GPT server fields. */
     function DbgptSettings(props) {
       const { t } = props
       const state = props.useDbgptForm(snapshot => snapshot)
       if (props.view === 'summary') return t('summary')
       const disabled = !state.writable || state.saving
+      const agent = state.mode.text !== 'sql'
       const custom = state.llmSource.text === 'custom'
       const mode = custom ? 'customHint' : 'dshHint'
       const value = (field, extra = {}) => h(SettingsValueField, {
@@ -260,6 +297,18 @@ window.__ModuleLoader__.load({
         onSave: props.save,
         onDiscard: props.discard,
       },
+      h('h4', { style: headingStyle }, t('section_mode')),
+      h('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+        h('span', { style: { fontSize: 13 } }, t('mode_label')),
+        h(SegmentedControl, {
+          id: 'dbgpt-config-mode',
+          label: t('mode_label'),
+          value: agent ? 'agent' : 'sql',
+          options: [{ value: 'agent', label: t('mode_agent') }, { value: 'sql', label: t('mode_sql') }],
+          disabled,
+          onChange: (next) => { props.edit('mode', next) },
+        }),
+        h('p', { style: hintStyle }, t(agent ? 'mode_agentHint' : 'mode_sqlHint'))),
       h('h4', { style: headingStyle }, t('section_model')),
       h('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
         h('span', { style: { fontSize: 13 } }, t('llmSource_label')),
@@ -284,6 +333,77 @@ window.__ModuleLoader__.load({
       value('port', { invalid: t('invalidPort'), numeric: true }))
     }
 
+    const stepsStyle = { display: 'flex', flexDirection: 'column', gap: 12, padding: '4px 0 4px 22px' }
+    const stepTitleStyle = { fontSize: 13, fontWeight: 600 }
+
+    /** @returns {{ final: string, plan: object[], steps: object[] } | undefined} the run a `dbgpt_agent` result recorded for this view. */
+    function agentRun(meta) {
+      if (meta === null || typeof meta !== 'object' || typeof meta.final !== 'string') return undefined
+      return { final: meta.final, plan: Array.isArray(meta.plan) ? meta.plan : [], steps: Array.isArray(meta.steps) ? meta.steps : [] }
+    }
+
+    /** Marks of plan task states. */
+    const PLAN_MARKS = { completed: '✓', in_progress: '…', pending: '○', cancelled: '✗' }
+
+    /** DB-GPT's task list as it stood when the agent concluded. */
+    function AgentPlan({ plan, labels, t }) {
+      return h('div', null,
+        h('div', { style: stepTitleStyle }, t('agent_plan')),
+        h(MarkdownText, {
+          text: plan.map(task => `- ${PLAN_MARKS[task.status] ?? '○'} ${task.content}`).join('\n'),
+          labels,
+          variant: 'compact',
+        }))
+    }
+
+    /** One step of DB-GPT's analysis: what it set out to do, its thought, and what came back. */
+    function AgentStep({ step, index, labels, t }) {
+      const action = typeof step.action === 'string' && step.action !== step.title ? ` · ${step.action}` : ''
+      return h('div', null,
+        h('div', { style: stepTitleStyle },
+          `${index + 1}. ${step.title || step.action || ''}`,
+          h('span', { style: { fontWeight: 400, opacity: 0.7 } }, action),
+          step.status === 'failed' ? h('span', { style: { fontWeight: 400, color: 'var(--color-danger, #d93025)' } }, ` · ${t('step_failed')}`) : null),
+        step.thought ? h('p', { style: { ...hintStyle, margin: '2px 0 4px' } }, step.thought) : null,
+        step.output ? h(MarkdownText, { text: step.output, labels, variant: 'compact' }) : null)
+    }
+
+    /**
+     * A `dbgpt_agent` call in the conversation. While DB-GPT works it shows a
+     * shimmering "analyzing" row; afterwards DB-GPT's conclusion, which ends
+     * dsh's turn, with the steps folded beneath the row.
+     */
+    function DbgptAgentView(props) {
+      const { t, phase, block } = props
+      const disclosure = props.useDisclosure()
+      const icon = h(IconDatabaseOutlineRegular, { size: 14 })
+      const labels = { code: { copyLabel: t('copy'), copiedLabel: t('copied') }, footnotes: t('footnotes') }
+      if (phase !== 'result') {
+        const database = block.args.complete('database') ? block.args.text('database') : undefined
+        return h(DisclosureRow, {
+          icon, title: database ? t('agent_runningIn', { database }) : t('agent_running'),
+          open: false, expandable: false, onToggle: () => {}, running: true,
+        })
+      }
+      const run = block.isError ? undefined : agentRun(block.meta)
+      if (run === undefined) {
+        const detail = block.content.filter(part => part.type === 'text').map(part => part.text).join('\n\n')
+        return h(DisclosureRow, {
+          icon, title: t(block.isError ? 'agent_failed' : 'agent_done'),
+          open: disclosure.expanded, expandable: detail !== '', onToggle: disclosure.toggle, expandOnRowClick: true,
+        }, h('div', { style: stepsStyle }, h(MarkdownText, { text: detail, labels, variant: 'compact' })))
+      }
+      const expandable = run.plan.length > 0 || run.steps.length > 0
+      return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+        h(DisclosureRow, {
+          icon, title: run.steps.length > 0 ? t('agent_steps', { count: run.steps.length }) : t('agent_done'),
+          open: disclosure.expanded, expandable, onToggle: disclosure.toggle, expandOnRowClick: true,
+        }, h('div', { style: stepsStyle },
+          run.plan.length > 0 ? h(AgentPlan, { plan: run.plan, labels, t }) : null,
+          run.steps.map((step, index) => h(AgentStep, { key: index, step, index, labels, t })))),
+        h(MarkdownText, { text: run.final, labels }))
+    }
+
     return {
       inject: ['slots', 'locale', 'configForms', 'remote', 'remote.credentials'],
       apply(ctx) {
@@ -296,6 +416,9 @@ window.__ModuleLoader__.load({
         ctx.slots.inject('plugins.row.config', () => ctx.slots.register({
           name: 'plugins.row.config', key: ROW_KEY, locale: LOCALE, inject: () => controller.face(),
         }, DbgptSettings))
+        ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
+          name: 'tool.call.toolview', key: 'dbgpt_agent', locale: LOCALE,
+        }, DbgptAgentView))
       },
     }
   },

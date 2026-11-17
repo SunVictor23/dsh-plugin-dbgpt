@@ -2,15 +2,18 @@
 
 [English](README.md) | 中文
 
-把 [DB-GPT](https://github.com/eosphoros-ai/DB-GPT) 接入 DeepSeek Harness（dsh）的插件。插件启用后，你在 dsh 里问到查数据、统计、对比、排名这类问题时，dsh 会主动把问题交给 DB-GPT。DB-GPT 负责读表结构、写 SQL、执行，再把说明、SQL 和结果表格交回 dsh。
+把 [DB-GPT](https://github.com/eosphoros-ai/DB-GPT) 接入 DeepSeek Harness（dsh）的插件。插件启用后，你在 dsh 里问到查数据、统计、对比、排名这类问题时，dsh 会主动把问题交给 DB-GPT。默认由 DB-GPT 的 ReAct 智能体负责思考：它自己规划、按需多次查询 SQL、修正出错的查询，并写出结论，dsh 直接把这个结论作为回答显示出来。
 
 ## 它做什么
 
 - **管理 DB-GPT 服务**：插件启用时自动启动 DB-GPT 网页服务（默认端口 5670），停用插件或退出 dsh 时自动停止。修改模型相关设置后会自动重启 DB-GPT。
+- **两种分析方式**，在设置里的 **分析方式** 选择：
+  - **ReAct 智能体**（默认）：dsh 只转交问题。DB-GPT 的数据智能体读取表结构、制定计划、执行 SQL 查询（能并行时一次查多条）、画图、修正并重跑出错的查询，最后写出结论。分析期间 dsh 显示“DB-GPT 正在分析中…”，结束后显示 DB-GPT 的结论，dsh 自己的模型不会再对答案做二次思考。展开结论上方那一行，可以看到 DB-GPT 的计划和每一步的思路、SQL 和查到的数据。
+  - **单轮 SQL**：每次调用让 DB-GPT 写一条 SQL 并返回结果行，由 dsh 的模型根据结果继续思考和追问。
 - **给 dsh 两个工具**：
   - `dbgpt_list_databases`：列出 DB-GPT 里已接好的数据库。
-  - `dbgpt_query`：对某个数据库提一个数据问题。同一个 dsh 对话里，对同一个库的追问会沿用 DB-GPT 的上下文。
-- **`/dbgpt` 命令**：`/dbgpt` 或 `/dbgpt status` 查看 DB-GPT 状态，`/dbgpt restart` 重启。
+  - `dbgpt_agent`（ReAct 智能体方式）或 `dbgpt_query`（单轮 SQL 方式）：对某个数据库提一个数据问题。同一个 dsh 对话里，对同一个库的追问会沿用 DB-GPT 的上下文。
+- **`/dbgpt` 命令**：`/dbgpt` 或 `/dbgpt status` 查看 DB-GPT 状态和当前分析方式，`/dbgpt restart` 重启 DB-GPT。
 
 数据源仍在 DB-GPT 自己的网页里添加和管理（`http://<服务器>:5670`），插件直接使用这些数据源。DB-GPT 的数据源和历史对话保存在 `DB-GPT/pilot/` 下，开关插件不会影响它们。
 
@@ -67,6 +70,7 @@ pnpm dsh plugin --profile web add /mnt/workspace/sxk_dbgpt/dsh-plugin-dbgpt
 
 | 设置 | 说明 |
 | --- | --- |
+| 分析方式 | **ReAct 智能体**（默认）：DB-GPT 自己规划、按需多次查询，写出结论由 dsh 显示。**单轮 SQL**：DB-GPT 每次只执行一条查询，由 dsh 的模型根据结果思考。从 dsh 的下一步开始生效。 |
 | 模型来源 | **复用 dsh 的 API**：使用 dsh 当前模型提供方的地址和 API Key。**单独配置**：使用下面填写的地址、模型和 API Key。 |
 | 模型名称 | 复用 dsh 时留空表示用 dsh 当前的默认模型；单独配置时必填。 |
 | API 地址 | OpenAI 兼容地址（以 `/v1` 结尾）。单独配置时必填；复用 dsh 时可选，用来覆盖推算出的地址。 |
@@ -77,7 +81,7 @@ pnpm dsh plugin --profile web add /mnt/workspace/sxk_dbgpt/dsh-plugin-dbgpt
 
 DB-GPT 通过 **OpenAI 兼容接口** 调用模型。复用 dsh 时，插件把 dsh 的地址换算成 OpenAI 兼容地址：结尾的 `/anthropic` 换成 `/v1`，比如 `https://api.deepseek.com/anthropic` → `https://api.deepseek.com/v1`。只能通过 Anthropic 协议调用的模型 DB-GPT 用不了，这时在“模型名称”里另填一个模型。
 
-地址是 `api.deepseek.com` 时，插件让 DB-GPT 使用它自带的 DeepSeek 接入方式（`proxy/deepseek`），并关闭思考模式；否则 deepseek-v4-pro 会把输出额度花在思考上，DB-GPT 拿不到 SQL。其他地址使用通用的 `proxy/openai`。需要时可以用 YAML 字段 `llmProvider` 指定。
+地址是 `api.deepseek.com` 时，插件让 DB-GPT 使用它自带的 DeepSeek 接入方式（`proxy/deepseek`），并关闭思考模式；否则 deepseek-v4-pro 会把输出额度花在思考上，DB-GPT 拿不到 SQL。其他地址使用通用的 `proxy/openai`。需要时可以用 YAML 字段 `llmProvider` 指定。ReAct 智能体靠模型的工具调用（function calling）推进每一步，所以这种方式下 DB-GPT 用的模型必须支持工具调用；DeepSeek 的模型都支持。
 
 DeepSeek 官方 API 不提供 Embedding。DB-GPT 现有的向量数据是用京东云的 `text-embedding-3-large` 建的，所以 Embedding 地址填 `https://modelservice.jdcloud.com/v1`，Embedding API Key 填京东云的 key。
 
@@ -87,7 +91,9 @@ DeepSeek 官方 API 不提供 Embedding。DB-GPT 现有的向量数据是用京�
 - `llmProvider`（默认 `auto`）：DB-GPT 的模型接入方式，可选 `proxy/openai`、`proxy/deepseek`。
 - `llmApiKeyEnv`、`embeddingApiKeyEnv`：两个 API Key 的凭据名。
 - `launcher`：启动命令，默认 `.venv/bin/dbgpt start webserver`。
-- `bindHost`（默认 `0.0.0.0`）、`language`、`maxRows`（返回给模型的最多行数，默认 50）、`startupTimeoutMs`、`requestTimeoutMs`、`llmContextLength`。
+- `bindHost`（默认 `0.0.0.0`）、`language`、`startupTimeoutMs`、`llmContextLength`。
+- `agentTimeoutMs`（默认 960000）：一次 ReAct 智能体分析的时限。DB-GPT 自己会在 900 秒或 60 轮后停止智能体。
+- `requestTimeoutMs`（默认 300000）和 `maxRows`（返回给模型的最多行数，默认 50）：只用于单轮 SQL 方式。
 
 插件每次启动 DB-GPT 时会生成配置文件 `/tmp/dsh-plugin-dbgpt/dbgpt-<端口>.toml`（不含密钥，密钥通过环境变量传给 DB-GPT）。DB-GPT 自己的日志仍在 `DB-GPT/logs/`。
 
@@ -101,9 +107,9 @@ DeepSeek 官方 API 不提供 Embedding。DB-GPT 现有的向量数据是用京�
 | `src/config.js` | 配置项定义 |
 | `src/launch.js` | 解析模型来源（复用 dsh / 单独配置）、生成 DB-GPT 配置 |
 | `src/supervisor.js` | 启动、等待就绪、重启、停止 DB-GPT 进程 |
-| `src/dbgpt-api.js` | 调用 DB-GPT 接口，解析它返回的 `<chart-view>` 结果 |
-| `src/render.js` | 把结果转成给模型看的 Markdown |
-| `src/client.js` | 网页端：插件页面里的设置表单 |
+| `src/dbgpt-api.js` | 调用 DB-GPT 接口：单轮 SQL 的回答（解析其中的 `<chart-view>` 结果）和 ReAct 智能体的分析（把事件流整理成计划、步骤和结论） |
+| `src/render.js` | 把结果转成给模型看的 Markdown，把智能体的步骤转成对话视图里显示的 Markdown |
+| `src/client.js` | 网页端：插件页面里的设置表单，以及对话里 `dbgpt_agent` 的显示视图 |
 | `cordis.patch.yml` | 安装后加入 profile 的配置层 |
 | `install.sh` | 新电脑一键安装 |
 
@@ -117,7 +123,10 @@ npm test
 
 ## 已知限制
 
-- DB-GPT 执行的是模型生成的 SQL，插件不拦截写操作。如果数据源里有不能改动的生产库，请在 DB-GPT 里用只读账号连接。
+- 单轮 SQL 方式下，DB-GPT 执行的是模型生成的 SQL，插件不拦截写操作。ReAct 智能体的 `sql_query` 只执行 SELECT，但智能体还能运行 Python。如果数据源里有不能改动的生产库，请在 DB-GPT 里用只读账号连接。
+- ReAct 智能体分析期间，dsh 只显示“DB-GPT 正在分析中…”，计划和步骤要等它得出结论后才显示。
+- ReAct 智能体想向你提问时，插件会跳过这个问题，DB-GPT 按自己的理解继续。被跳过的问题会列在步骤里。
+- 对话视图把 DB-GPT 的图表显示为它的 SQL 和数据表，也不显示 HTML 报告；需要时请到 DB-GPT 网页打开这次对话。只执行了一条查询的步骤，DB-GPT 只返回结果行，不返回 SQL 原文。
 - 复用 dsh 的 API 目前只支持 dsh 的 DeepSeek API Key 类型的模型提供方；其他类型请改用“单独配置”。
 - 复用 dsh 且模型名称留空时，dsh 切换默认模型后，DB-GPT 会在下一次查询时自动重启，这次查询会多等启动时间（约 30 秒）。在 dsh 里改了 API Key 之后也一样。
 - 插件的运行日志不会显示在 dsh 的终端里；DB-GPT 起不来时，用 `/dbgpt` 查看原因。

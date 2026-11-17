@@ -23,8 +23,13 @@ export const Config = z.object({
     .description('DB-GPT system language.'),
   startupTimeoutMs: z.number().step(1).min(1000).default(180_000)
     .description('How long a managed start may take before it is reported as failed.'),
+  mode: z.union(['agent', 'sql']).default('agent').volatile()
+    .description('agent: DB-GPT\'s ReAct data agent plans, queries, and retries on its own, and its conclusion ends dsh\'s turn (tool dbgpt_agent). '
+      + 'sql: DB-GPT writes and runs one query per call and dsh reasons over the rows (tool dbgpt_query).'),
   requestTimeoutMs: z.number().step(1).min(1000).default(300_000)
-    .description('Deadline for one DB-GPT request.'),
+    .description('Deadline for one DB-GPT request in sql mode.'),
+  agentTimeoutMs: z.number().step(1).min(1000).default(960_000)
+    .description('Deadline for one data-agent run in agent mode; DB-GPT itself stops an agent after 900 seconds.'),
   maxRows: z.number().step(1).min(1).default(50).volatile()
     .description('Result rows returned to the model per query; the row count is always reported.'),
   llmSource: z.union(['dsh', 'custom']).default('dsh').volatile()
