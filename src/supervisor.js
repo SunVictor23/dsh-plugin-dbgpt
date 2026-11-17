@@ -18,6 +18,32 @@ const PROBE_INTERVAL_MS = 1000
 /** Grace period between SIGTERM and SIGKILL when the server is stopped. */
 const GRACE_MS = 10_000
 
+/**
+ * Build a proxy bypass list compatible with DB-GPT's httpx version. Harness
+ * child environments include both IPv6 loopback spellings, but httpx treats
+ * the bracketed form as a URL with the invalid port `:1]`.
+ * @param {NodeJS.ProcessEnv} [environment] - parent environment to preserve.
+ * @returns {string} comma-separated bypass entries without bracketed IPv6 loopback.
+ */
+export function httpxNoProxy(environment = process.env) {
+  const entries = []
+  const seen = new Set()
+  for (const value of [environment.NO_PROXY, environment.no_proxy]) {
+    for (const entry of value?.split(',') ?? []) {
+      const trimmed = entry.trim()
+      if (trimmed === '' || trimmed === '[::1]' || seen.has(trimmed)) continue
+      seen.add(trimmed)
+      entries.push(trimmed)
+    }
+  }
+  for (const loopback of ['localhost', '127.0.0.1', '::1']) {
+    if (seen.has(loopback)) continue
+    seen.add(loopback)
+    entries.push(loopback)
+  }
+  return entries.join(',')
+}
+
 /** A failure of the DB-GPT server itself; the message is user-facing Chinese. */
 export class DbgptServerError extends Error {
   /** @param {string} message - what failed. */
@@ -199,13 +225,20 @@ export class DbgptSupervisor {
     if (await portInUse(spec.port)) {
       throw this.fail(new DbgptServerError(`端口 ${spec.port} 已被其他程序占用（可能是手动启动的 DB-GPT）。请先停止它，或在 DB-GPT 插件设置里换一个端口。`))
     }
+    const noProxy = httpxNoProxy()
     this.ctx.logger.info(`starting DB-GPT on port ${spec.port} with model ${spec.model} (${spec.source})`)
     const handle = this.ctx.subprocess.spawn({
       argv: spec.argv,
       cwd: spec.home,
       stdio: { stdin: 'ignore', stdout: { maxBytes: OUTPUT_TAIL_BYTES }, stderr: { maxBytes: OUTPUT_TAIL_BYTES } },
       graceMs: GRACE_MS,
-      env: { [LLM_KEY_ENV]: spec.apiKey, [EMBEDDING_KEY_ENV]: spec.embeddingApiKey, PYTHONUNBUFFERED: '1' },
+      env: {
+        [LLM_KEY_ENV]: spec.apiKey,
+        [EMBEDDING_KEY_ENV]: spec.embeddingApiKey,
+        PYTHONUNBUFFERED: '1',
+        NO_PROXY: noProxy,
+        no_proxy: noProxy,
+      },
     })
     const entry = { spec, handle, exited: false, failed: false, readySettled: false, ready: undefined }
     const exit = handle.done.then(
