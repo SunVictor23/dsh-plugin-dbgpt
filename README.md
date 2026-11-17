@@ -1,6 +1,8 @@
 # dsh-plugin-dbgpt
 
-把 [DB-GPT](../DB-GPT) 接入 DeepSeek Harness（dsh）的插件。插件启用后，你在 dsh 里问到查数据、统计、对比、排名这类问题时，dsh 会主动把问题交给 DB-GPT。DB-GPT 负责读表结构、写 SQL、执行，再把说明、SQL 和结果表格交回 dsh。
+中文 | [English](README.en.md)
+
+把 [DB-GPT](https://github.com/eosphoros-ai/DB-GPT) 接入 DeepSeek Harness（dsh）的插件。插件启用后，你在 dsh 里问到查数据、统计、对比、排名这类问题时，dsh 会主动把问题交给 DB-GPT。DB-GPT 负责读表结构、写 SQL、执行，再把说明、SQL 和结果表格交回 dsh。
 
 ## 它做什么
 
