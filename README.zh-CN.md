@@ -10,12 +10,28 @@
 - **两种分析方式**，在设置里的 **分析方式** 选择：
   - **ReAct 智能体**（默认）：dsh 只转交问题。DB-GPT 的数据智能体读取表结构、制定计划、执行 SQL 查询（能并行时一次查多条）、画图、修正并重跑出错的查询，最后写出结论。分析期间 dsh 显示“DB-GPT 正在分析中…”，结束后显示 DB-GPT 的结论，dsh 自己的模型不会再对答案做二次思考。展开结论上方那一行，可以看到 DB-GPT 的计划和每一步的思路、SQL 和查到的数据。
   - **单轮 SQL**：每次调用让 DB-GPT 写一条 SQL 并返回结果行，由 dsh 的模型根据结果继续思考和追问。
-- **给 dsh 两个工具**：
-  - `dbgpt_list_databases`：列出 DB-GPT 里已接好的数据库。
-  - `dbgpt_agent`（ReAct 智能体方式）或 `dbgpt_query`（单轮 SQL 方式）：对某个数据库提一个数据问题。同一个 dsh 对话里，对同一个库的追问会沿用 DB-GPT 的上下文。
-- **`/dbgpt` 命令**：`/dbgpt` 或 `/dbgpt status` 查看 DB-GPT 状态和当前分析方式，`/dbgpt restart` 重启 DB-GPT。
+- **给 dsh 的工具和命令**：见 [工具](#工具)。
 
 数据源仍在 DB-GPT 自己的网页里添加和管理（`http://<服务器>:5670`），插件直接使用这些数据源。DB-GPT 的数据源和历史对话保存在 `DB-GPT/pilot/` 下，开关插件不会影响它们。
+
+## 工具
+
+问题需要查数据时，dsh 的模型会自己调用这些工具。`dbgpt_list_databases` 始终可用；两个提问工具中，dsh 只会拿到当前分析方式对应的那一个。
+
+| 工具 | 适用方式 | 作用 | 参数 | 返回 |
+| --- | --- | --- | --- | --- |
+| `dbgpt_list_databases` | 两种方式都有 | 列出 DB-GPT 里已接好的数据库。dsh 不知道数据在哪个库时会先调用它。 | 无 | 每个数据库的名称、类型和描述 |
+| `dbgpt_agent` | **ReAct 智能体**方式（默认） | 把问题交给 DB-GPT 的 ReAct 数据智能体：它自己规划、按需多次执行 SQL 查询、修正出错的查询、画图，最后写出结论。结论直接作为 dsh 的回答显示，并结束 dsh 的这一轮。一次分析最长 900 秒。 | `database`：`dbgpt_list_databases` 列出的库名；`question`：用户的原始问题 | DB-GPT 的结论、计划，以及每一步的思路、SQL 和查到的数据 |
+| `dbgpt_query` | **单轮 SQL** 方式 | 让 DB-GPT 对一个数据库写一条 SQL 并执行，由 dsh 的模型根据结果继续思考。 | `database`：`dbgpt_list_databases` 列出的库名；`question`：一个完整、独立的问题 | DB-GPT 的说明、SQL、结果行数、前 `maxRows` 行结果（默认 50），以及 DB-GPT 建议的图表类型 |
+
+同一个 dsh 对话里，对同一个数据库的追问会接着 DB-GPT 的同一个对话，DB-GPT 能看到之前的问题和结论。两种分析方式各自使用独立的 DB-GPT 对话。
+
+插件还提供一个在 dsh 里输入的命令：
+
+| 命令 | 作用 |
+| --- | --- |
+| `/dbgpt` 或 `/dbgpt status` | 显示 DB-GPT 的运行状态、分析方式、DB-GPT 使用的模型、DB-GPT 网页地址和目录；DB-GPT 启动失败时还会显示原因 |
+| `/dbgpt restart` | 重启插件管理的 DB-GPT 服务 |
 
 ## 安装
 
