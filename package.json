@@ -14,7 +14,8 @@
     "src",
     "cordis.patch.yml",
     "install.sh",
-    "README.md"
+    "README.md",
+    "README.en.md"
   ],
   "engines": {
     "dsh": ">=0.2.2-rc.3 <0.3.0"
