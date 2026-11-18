@@ -226,7 +226,7 @@ const MODEL_STEP_LIMIT = 2_000
  * @returns {string} Markdown for the model.
  */
 export function renderAgent(value) {
-  const parts = [`Database: ${value.database}`, `DB-GPT data agent's conclusion, already shown to the user:\n\n${value.final}`]
+  const parts = [`Database: ${value.database}`, `DB-GPT data agent's conclusion. Answer the user from this conclusion without omitting its result:\n\n${value.final}`]
   if (value.steps.length > 0) {
     const steps = value.steps.map((step, index) => {
       const lines = [`${index + 1}. ${step.title}${step.action && step.action !== step.title ? ` (${step.action})` : ''}${step.status === 'failed' ? ' [failed]' : ''}`]

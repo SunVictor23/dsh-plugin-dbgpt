@@ -108,7 +108,7 @@ test('renderAgent gives the model the conclusion and the steps', () => {
     final: '45 家门店',
     steps: [{ title: '统计门店数量', action: 'sql_query', thought: '去重计数', status: 'done', output: '| n |\n| --- |\n| 45 |' }],
   })
-  assert.match(text, /conclusion, already shown to the user:\n\n45 家门店/)
+  assert.match(text, /Answer the user from this conclusion without omitting its result:\n\n45 家门店/)
   assert.match(text, /1\. 统计门店数量 \(sql_query\)\nThought: 去重计数\n\| n \|/)
 })
 

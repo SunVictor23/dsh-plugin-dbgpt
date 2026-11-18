@@ -30,7 +30,7 @@ window.__ModuleLoader__.load({
       mode_label: '分析方式',
       mode_agent: 'ReAct 智能体',
       mode_sql: '单轮 SQL',
-      mode_agentHint: 'DB-GPT 自己规划、多次查询、出错重试，并写出结论；dsh 只转交问题，直接显示 DB-GPT 的结论。',
+      mode_agentHint: 'DB-GPT 自己规划、多次查询、出错重试并写出结论；随后 dsh 根据该结论正式回复。',
       mode_sqlHint: 'DB-GPT 每次只写一条 SQL 并执行，dsh 根据查询结果继续思考和追问。',
       section_model: '模型',
       section_embedding: 'Embedding',
@@ -87,7 +87,7 @@ window.__ModuleLoader__.load({
       mode_label: 'Analysis mode',
       mode_agent: 'ReAct agent',
       mode_sql: 'Single SQL',
-      mode_agentHint: 'DB-GPT plans, runs as many queries as it needs, retries failures, and writes the conclusion; dsh only passes the question on and shows DB-GPT\'s conclusion.',
+      mode_agentHint: 'DB-GPT plans, runs as many queries as it needs, retries failures, and writes the conclusion; dsh then answers from that conclusion.',
       mode_sqlHint: 'DB-GPT writes and runs one SQL query per call, and dsh reasons over the rows and asks follow-ups.',
       section_model: 'Model',
       section_embedding: 'Embeddings',
@@ -370,8 +370,8 @@ window.__ModuleLoader__.load({
 
     /**
      * A `dbgpt_agent` call in the conversation. While DB-GPT works it shows a
-     * shimmering "analyzing" row; afterwards DB-GPT's conclusion, which ends
-     * dsh's turn, with the steps folded beneath the row.
+     * shimmering "analyzing" row; afterwards DB-GPT's conclusion, with the
+     * steps folded beneath the row. dsh's reply follows the call.
      */
     function DbgptAgentView(props) {
       const { t, phase, block } = props

@@ -42,8 +42,17 @@
     "@deepseek-ai/cordis": "*",
     "@deepseek-ai/schemastery": "*",
     "@deepseek-ai/dsh-error": "*",
+    "@deepseek-ai/dsh-llm": "*",
     "@deepseek-ai/dsh-llm-deepseek": "*",
     "@deepseek-ai/dsh-tools": "*"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-error": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-llm": {
+      "optional": true
+    }
   },
   "license": "MIT"
 }

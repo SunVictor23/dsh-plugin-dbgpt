@@ -2,17 +2,17 @@
  * dsh plugin that hands database questions to DB-GPT. While the row is
  * enabled it keeps a DB-GPT webserver running (unless `manage` is false) and
  * registers `dbgpt_list_databases` plus one question tool picked by `mode`:
- * `dbgpt_agent` hands the whole question to DB-GPT's ReAct data agent and ends
- * dsh's turn with its conclusion; `dbgpt_query` runs one DB-GPT query and lets
+ * `dbgpt_agent` hands the whole question to DB-GPT's ReAct data agent and lets
+ * dsh answer from its conclusion; `dbgpt_query` runs one DB-GPT query and lets
  * dsh reason over the rows. The `/dbgpt` command reports the server state and
  * restarts it.
  */
 import { randomUUID } from 'node:crypto'
-import { HarnessError } from '@deepseek-ai/dsh-error'
 import { PUBLIC_BASE_URL } from '@deepseek-ai/dsh-llm-deepseek'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { Config } from './config.js'
 import { askDatabase, listDatabases, parseChatData, runAgent } from './dbgpt-api.js'
+import { HarnessError } from './harness-error.js'
 import { DbgptConfigError, resolveLaunch } from './launch.js'
 import { columnsOf, renderAgent, renderDatabases, renderQuery, stepOutput } from './render.js'
 import { DbgptSupervisor } from './supervisor.js'
@@ -47,7 +47,7 @@ function toolError(error, callSignal, timeoutMs) {
 /** Words for the server states `/dbgpt` reports. */
 const STATE_WORDS = { running: '运行中', starting: '启动中', failed: '启动失败', exited: '已退出', stopped: '未启动' }
 /** Words for the question modes `/dbgpt` reports. */
-const MODE_WORDS = { agent: 'ReAct 智能体（DB-GPT 思考，dsh 只转交问题）', sql: '单轮 SQL（dsh 根据查询结果思考）' }
+const MODE_WORDS = { agent: 'ReAct 智能体（DB-GPT 分析，dsh 根据结论回复）', sql: '单轮 SQL（dsh 根据查询结果思考）' }
 
 /**
  * Endpoint of dsh's DeepSeek API-key route when its settings name none; that
@@ -223,7 +223,7 @@ export function apply(ctx, config) {
       + 'plans, runs SQL, draws charts, retries failed queries on its own, and writes the conclusion. Use it whenever the user wants '
       + 'data looked up, counted, aggregated, compared, ranked, or analyzed from these databases, instead of guessing or writing SQL yourself. '
       + 'Pass the user\'s request as they wrote it, in their language, in one call: do not split it, rewrite it, explore the data first, '
-      + 'or retry with other wording. The conclusion is shown to the user as it is and ends your turn, so there is nothing to add after it. '
+      + 'or retry with other wording. After it returns, answer the user from DB-GPT\'s conclusion without omitting its result. '
       + 'Follow-up questions about the same database in this conversation continue DB-GPT\'s context. If the call fails, tell the user '
       + 'what DB-GPT reported instead of answering from your own knowledge.',
     parameters: {
@@ -256,8 +256,6 @@ export function apply(ctx, config) {
           }),
         }
       }, config.agentTimeoutMs)
-      // DB-GPT's conclusion is the answer: dsh shows it and does not think it over again.
-      exec.concludeTurn()
       return value
     },
   }), { when: () => config.mode.get() === 'agent' }), 'dbgpt: dbgpt_agent')

@@ -2,13 +2,13 @@
 
 English | [中文](README.zh-CN.md)
 
-A DeepSeek Harness (dsh) plugin that connects [DB-GPT](https://github.com/eosphoros-ai/DB-GPT). With the plugin enabled, when you ask dsh to look up data, count, compare, or rank, dsh hands the question to DB-GPT on its own. By default DB-GPT's ReAct data agent does the thinking: it plans, runs as many SQL queries as it needs, fixes failed ones, and writes the conclusion, which dsh shows as its answer.
+A DeepSeek Harness (dsh) plugin that connects [DB-GPT](https://github.com/eosphoros-ai/DB-GPT). With the plugin enabled, when you ask dsh to look up data, count, compare, or rank, dsh hands the question to DB-GPT on its own. By default DB-GPT's ReAct data agent does the analysis: it plans, runs as many SQL queries as it needs, fixes failed ones, and writes the conclusion; dsh then answers from that conclusion.
 
 ## What it does
 
 - **Manages the DB-GPT server**: enabling the plugin starts the DB-GPT web server (port 5670 by default); disabling the plugin or quitting dsh stops it. Changing a model setting restarts DB-GPT automatically.
 - **Two analysis modes**, chosen under **Analysis mode** in the settings:
-  - **ReAct agent** (default): dsh only passes the question on. DB-GPT's data agent reads the table structure, plans, runs SQL queries (several at once when it can), draws charts, fixes and reruns failed queries, and writes the conclusion. dsh shows "DB-GPT is analyzing…" while it works, then DB-GPT's conclusion; dsh's own model does not think about the answer again. Expand the row above the conclusion to see DB-GPT's plan and each step: its thought, the SQL, and the rows it got.
+  - **ReAct agent** (default): DB-GPT's data agent reads the table structure, plans, runs SQL queries (several at once when it can), draws charts, fixes and reruns failed queries, and writes the conclusion; dsh then produces the assistant reply from that conclusion. Expand the tool-result row to see DB-GPT's plan and each step: its thought, the SQL, and the rows it got.
   - **Single SQL**: each call asks DB-GPT for one SQL query and its rows, and dsh's model reasons over them and asks follow-ups.
 - **Tools and a command for dsh**: see [Tools](#tools).
 
@@ -21,7 +21,7 @@ dsh's model calls these tools on its own when a question needs data. `dbgpt_list
 | Tool | Available in | What it does | Parameters | Returns |
 | --- | --- | --- | --- | --- |
 | `dbgpt_list_databases` | Both modes | Lists the databases connected in DB-GPT. dsh calls it first when it does not know which database holds the data. | None | Each database's name, type, and description |
-| `dbgpt_agent` | **ReAct agent** mode (default) | Hands the question to DB-GPT's ReAct data agent, which plans, runs as many SQL queries as it needs, fixes failed ones, draws charts, and writes the conclusion. The conclusion is shown as dsh's answer and ends dsh's turn. A run takes at most 900 seconds. | `database`: a name from `dbgpt_list_databases`; `question`: the user's question as asked | DB-GPT's conclusion, its plan, and each step's thought, SQL, and rows |
+| `dbgpt_agent` | **ReAct agent** mode (default) | Hands the question to DB-GPT's ReAct data agent, which plans, runs as many SQL queries as it needs, fixes failed ones, draws charts, and writes the conclusion. dsh then answers the user from that conclusion. A run takes at most 900 seconds. | `database`: a name from `dbgpt_list_databases`; `question`: the user's question as asked | DB-GPT's conclusion, its plan, and each step's thought, SQL, and rows |
 | `dbgpt_query` | **Single SQL** mode | Has DB-GPT write and run one SQL query on one database; dsh's model reasons over the result. | `database`: a name from `dbgpt_list_databases`; `question`: one self-contained question | DB-GPT's explanation, the SQL, the row count, the first `maxRows` rows (default 50), and DB-GPT's suggested chart |
 
 A follow-up question about the same database in the same dsh conversation continues DB-GPT's conversation, so DB-GPT sees the earlier questions and conclusions. The two modes keep separate DB-GPT conversations.
@@ -34,6 +34,8 @@ The plugin also adds a command you type in dsh:
 | `/dbgpt restart` | Restarts the DB-GPT server the plugin manages |
 
 ## Installation
+
+The Host integration supports both DSH package layouts for structured errors: it uses `@deepseek-ai/dsh-error` when that split package exists and falls back to `HarnessError` from `@deepseek-ai/dsh-llm` on earlier layouts. Both peers are optional because one supported DSH installation normally provides only one of them.
 
 ### One-step install (recommended on a new machine)
 
@@ -140,7 +142,7 @@ To add a tool (say, one that uses another DB-GPT chat mode), register it with `d
 ## Known limitations
 
 - In single SQL mode DB-GPT runs the SQL the model generates, and the plugin doesn't block writes. The ReAct agent's `sql_query` only runs SELECT statements, but the agent can also run Python. If a datasource is a production database that must not change, connect it in DB-GPT with a read-only account.
-- While the ReAct agent works, dsh shows only "DB-GPT is analyzing…"; its plan and steps appear once it concludes.
+- While the ReAct agent works, dsh shows only "DB-GPT is analyzing…"; its plan and steps appear once it concludes, then dsh answers from that conclusion.
 - When the ReAct agent wants to ask you something, the plugin skips the question and DB-GPT continues with its own reading of the request. The skipped question is listed in the steps.
 - The conversation view shows DB-GPT's charts as their SQL and data table, and does not display HTML reports; open the conversation on the DB-GPT web page for those. For a step that ran a single query, DB-GPT reports the rows but not the SQL text.
 - Reusing dsh's API currently supports only dsh model providers that use a DeepSeek API key; for other providers, use "Separate".

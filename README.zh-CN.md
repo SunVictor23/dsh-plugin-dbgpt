@@ -2,13 +2,13 @@
 
 [English](README.md) | 中文
 
-把 [DB-GPT](https://github.com/eosphoros-ai/DB-GPT) 接入 DeepSeek Harness（dsh）的插件。插件启用后，你在 dsh 里问到查数据、统计、对比、排名这类问题时，dsh 会主动把问题交给 DB-GPT。默认由 DB-GPT 的 ReAct 智能体负责思考：它自己规划、按需多次查询 SQL、修正出错的查询，并写出结论，dsh 直接把这个结论作为回答显示出来。
+把 [DB-GPT](https://github.com/eosphoros-ai/DB-GPT) 接入 DeepSeek Harness（dsh）的插件。插件启用后，你在 dsh 里问到查数据、统计、对比、排名这类问题时，dsh 会主动把问题交给 DB-GPT。默认由 DB-GPT 的 ReAct 智能体负责分析：它自己规划、按需多次查询 SQL、修正出错的查询并写出结论，随后 dsh 根据该结论生成正式回复。
 
 ## 它做什么
 
 - **管理 DB-GPT 服务**：插件启用时自动启动 DB-GPT 网页服务（默认端口 5670），停用插件或退出 dsh 时自动停止。修改模型相关设置后会自动重启 DB-GPT。
 - **两种分析方式**，在设置里的 **分析方式** 选择：
-  - **ReAct 智能体**（默认）：dsh 只转交问题。DB-GPT 的数据智能体读取表结构、制定计划、执行 SQL 查询（能并行时一次查多条）、画图、修正并重跑出错的查询，最后写出结论。分析期间 dsh 显示“DB-GPT 正在分析中…”，结束后显示 DB-GPT 的结论，dsh 自己的模型不会再对答案做二次思考。展开结论上方那一行，可以看到 DB-GPT 的计划和每一步的思路、SQL 和查到的数据。
+  - **ReAct 智能体**（默认）：DB-GPT 的数据智能体读取表结构、制定计划、执行 SQL 查询（能并行时一次查多条）、画图、修正并重跑出错的查询，最后写出结论；随后 dsh 根据该结论生成正式助手回复。展开工具结果行，可以看到 DB-GPT 的计划和每一步的思路、SQL 和查到的数据。
   - **单轮 SQL**：每次调用让 DB-GPT 写一条 SQL 并返回结果行，由 dsh 的模型根据结果继续思考和追问。
 - **给 dsh 的工具和命令**：见 [工具](#工具)。
 
@@ -21,7 +21,7 @@
 | 工具 | 适用方式 | 作用 | 参数 | 返回 |
 | --- | --- | --- | --- | --- |
 | `dbgpt_list_databases` | 两种方式都有 | 列出 DB-GPT 里已接好的数据库。dsh 不知道数据在哪个库时会先调用它。 | 无 | 每个数据库的名称、类型和描述 |
-| `dbgpt_agent` | **ReAct 智能体**方式（默认） | 把问题交给 DB-GPT 的 ReAct 数据智能体：它自己规划、按需多次执行 SQL 查询、修正出错的查询、画图，最后写出结论。结论直接作为 dsh 的回答显示，并结束 dsh 的这一轮。一次分析最长 900 秒。 | `database`：`dbgpt_list_databases` 列出的库名；`question`：用户的原始问题 | DB-GPT 的结论、计划，以及每一步的思路、SQL 和查到的数据 |
+| `dbgpt_agent` | **ReAct 智能体**方式（默认） | 把问题交给 DB-GPT 的 ReAct 数据智能体：它自己规划、按需多次执行 SQL 查询、修正出错的查询、画图，最后写出结论。随后 dsh 根据该结论回复用户。一次分析最长 900 秒。 | `database`：`dbgpt_list_databases` 列出的库名；`question`：用户的原始问题 | DB-GPT 的结论、计划，以及每一步的思路、SQL 和查到的数据 |
 | `dbgpt_query` | **单轮 SQL** 方式 | 让 DB-GPT 对一个数据库写一条 SQL 并执行，由 dsh 的模型根据结果继续思考。 | `database`：`dbgpt_list_databases` 列出的库名；`question`：一个完整、独立的问题 | DB-GPT 的说明、SQL、结果行数、前 `maxRows` 行结果（默认 50），以及 DB-GPT 建议的图表类型 |
 
 同一个 dsh 对话里，对同一个数据库的追问会接着 DB-GPT 的同一个对话，DB-GPT 能看到之前的问题和结论。两种分析方式各自使用独立的 DB-GPT 对话。
@@ -34,6 +34,8 @@
 | `/dbgpt restart` | 重启插件管理的 DB-GPT 服务 |
 
 ## 安装
+
+Host 集成兼容两套 DSH 结构化错误包布局：存在拆分后的 `@deepseek-ai/dsh-error` 时优先使用它，较早布局则回退到 `@deepseek-ai/dsh-llm` 导出的 `HarnessError`。两个 peer 都声明为可选，因为一套受支持的 DSH 通常只提供其中一个。
 
 ### 一键安装（新电脑推荐）
 
@@ -86,7 +88,7 @@ pnpm dsh plugin --profile web add /mnt/workspace/sxk_dbgpt/dsh-plugin-dbgpt
 
 | 设置 | 说明 |
 | --- | --- |
-| 分析方式 | **ReAct 智能体**（默认）：DB-GPT 自己规划、按需多次查询，写出结论由 dsh 显示。**单轮 SQL**：DB-GPT 每次只执行一条查询，由 dsh 的模型根据结果思考。从 dsh 的下一步开始生效。 |
+| 分析方式 | **ReAct 智能体**（默认）：DB-GPT 自己规划、按需多次查询并写出结论，dsh 根据结论回复。**单轮 SQL**：DB-GPT 每次只执行一条查询，由 dsh 的模型根据结果思考。从 dsh 的下一步开始生效。 |
 | 模型来源 | **复用 dsh 的 API**：使用 dsh 当前模型提供方的地址和 API Key。**单独配置**：使用下面填写的地址、模型和 API Key。 |
 | 模型名称 | 复用 dsh 时留空表示用 dsh 当前的默认模型；单独配置时必填。 |
 | API 地址 | OpenAI 兼容地址（以 `/v1` 结尾）。单独配置时必填；复用 dsh 时可选，用来覆盖推算出的地址。 |
